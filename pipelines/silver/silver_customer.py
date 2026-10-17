@@ -18,8 +18,9 @@ RULES = [(re.compile(p), t) for p, t in [
     (r"^(amt_|days_|ext_source_|obs_|def_|region_population|totalarea)", "double"),
     (r".*_(avg|mode|medi)$", "double"),
 ]]
-# only columns where XNA was verified as "unknown"
+
 XNA_TO_NULL = ["code_gender", "organization_type"]
+
 
 def resolve_type(col):
     if col in OVERRIDES:
@@ -29,6 +30,7 @@ def resolve_type(col):
             return dtype
     raise ValueError(f"No type rule for column: {col}")
 
+
 def cast_expr(col, dtype):
     c = F.col(col)
     if dtype == "boolean":
@@ -37,9 +39,9 @@ def cast_expr(col, dtype):
         return F.trim(c)
     return F.expr(f"try_cast(`{col}` AS {dtype})")
 
-@dp.view(
-    name="customer_typed"
-)
+
+# ---- type, clean, and flag bad rows (shared by both outputs) ----
+@dp.view(name="customer_typed")
 def customer_typed():
     df = spark.readStream.table(f"{BRONZE}.application_train")
     src = [c for c in df.columns if not c.startswith("_")]
@@ -63,19 +65,39 @@ def customer_typed():
                      .when(F.col("target").isNull(), "target missing or not an int"))
     )
 
+
 AUDIT = ["_raw_sk_id_curr", "_raw_record", "_failed_rule"]
 
-@dp.table(
-    name=f"{SILVER}.customer", table_properties={"quality": "silver"}
-)
+
+# ---- good rows (expectations here) ----
+@dp.view(name="customer_valid")
 @dp.expect_all_or_drop({"key_present": "sk_id_curr IS NOT NULL"})
 @dp.expect_all({"ext_source_2_in_range": "ext_source_2 IS NULL OR ext_source_2 BETWEEN 0 AND 1"})
-def customer():
-    return spark.readStream.table("customer_typed").filter("_failed_rule IS NULL").drop(*AUDIT)
+def customer_valid():
+    return (spark.readStream.table("customer_typed")
+            .filter("_failed_rule IS NULL")
+            .drop(*AUDIT))
 
-@dp.table(
-    name=f"{SILVER}.customer_quarantine", table_properties={"quality": "quarantine"}
+
+# ---- silver customer = current state, one row per key (SCD type 1) ----
+dp.create_streaming_table(
+    name=f"{SILVER}.customer",
+    table_properties={"quality": "silver"},
 )
+
+dp.create_auto_cdc_flow(
+    target=f"{SILVER}.customer",
+    source="customer_valid",
+    keys=["sk_id_curr"],
+    sequence_by="_ingested_at",
+    stored_as_scd_type=1,
+)
+
+
+# ---- bad rows ----
+@dp.table(name=f"{SILVER}.customer_quarantine", table_properties={"quality": "quarantine"})
 def customer_quarantine():
-    return (spark.readStream.table("customer_typed").filter("_failed_rule IS NOT NULL")
-            .select("_raw_sk_id_curr", "_raw_record", "_failed_rule", "_source_file", "_ingested_at"))
+    return (spark.readStream.table("customer_typed")
+            .filter("_failed_rule IS NOT NULL")
+            .select("_raw_sk_id_curr", "_raw_record", "_failed_rule",
+                    "_source_file", "_ingested_at"))
