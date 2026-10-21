@@ -10,6 +10,8 @@ Risk analysts get raw files where everything is text, placeholder values pose as
 
 ## Architecture
 
+![Pipeline graph](docs/pipeline_graph.png)
+
 ```
 CSV files (Unity Catalog Volume)
    │  Auto Loader (incremental)
