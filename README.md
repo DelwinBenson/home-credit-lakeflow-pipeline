@@ -71,13 +71,13 @@ An interactive, two-page Power BI dashboard connected to the Gold-layer risk tab
 
 ### Executive Risk Overview
 
-![Home Credit Executive Risk Overview](docs/home-credit-executive-overview.png)
+![Home Credit Executive Risk Overview](docs/home-credit-executive-overview.PNG)
 
 Highlights overall default rate, customer distribution by risk segment, default rates across risk segments, and high-risk default lift.
 
 ### Customer Risk Analysis
 
-![Home Credit Customer Risk Analysis](docs/home-credit-customer-risk-analysis.png)
+![Home Credit Customer Risk Analysis](docs/home-credit-customer-risk-analysis.PNG)
 
 Explores default rates by age group and income band, with a risk-segment slicer and customer-level detail table.
 
